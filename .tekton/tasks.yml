@@ -1,0 +1,68 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: cleanup
+spec:
+  description: This task will clean up a workspace by deleting all of the files.
+  workspaces:
+    - name: source
+  steps:
+    - name: remove
+      image: alpine:3
+      env:
+        - name: WORKSPACE_SOURCE_PATH
+          value: $(workspaces.source.path)
+      workingDir: $(workspaces.source.path)
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+      script: |
+        #!/usr/bin/env sh
+        set -eu
+        echo "Removing all files from ${WORKSPACE_SOURCE_PATH} ..."
+        if [ -d "${WORKSPACE_SOURCE_PATH}" ] ; then
+          rm -rf "${WORKSPACE_SOURCE_PATH:?}"/*
+          rm -rf "${WORKSPACE_SOURCE_PATH}"/.[!.]*
+          rm -rf "${WORKSPACE_SOURCE_PATH}"/..?*
+        fi
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: eslint
+spec:
+  description: This task will run ESLint on the provided source.
+  workspaces:
+    - name: source
+  steps:
+    - name: lint
+      image: node:20
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/bash
+        set -e
+        npm ci
+        npm run lint
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: jest-test
+spec:
+  description: This task will run Jest unit tests on the provided source.
+  workspaces:
+    - name: source
+  params:
+    - name: args
+      description: Arguments to pass to Jest
+      type: string
+      default: "--verbose"
+  steps:
+    - name: jest
+      image: node:20
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/bash
+        set -e
+        npm ci
+        npx jest $(params.args)
